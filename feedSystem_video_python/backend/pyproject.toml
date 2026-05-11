@@ -1,0 +1,24 @@
+[project]
+name = "feedsystem-video-python-backend"
+version = "0.1.0"
+description = "用于学习后端开发的 FastAPI 短视频 Feed 系统重构项目。"
+requires-python = ">=3.11"
+dependencies = [
+    "asyncmy>=0.2.10",
+    "bcrypt>=4.1.0",
+    "fastapi>=0.115.0",
+    "PyJWT>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "redis>=5.0.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "httpx>=0.27.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

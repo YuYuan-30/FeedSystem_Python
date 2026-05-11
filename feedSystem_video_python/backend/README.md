@@ -1,0 +1,75 @@
+# feedSystem Video Python 后端
+
+当前后端范围：
+
+- FastAPI 应用启动。
+- 通过 SQLAlchemy async 连接 MySQL。
+- 创建 `accounts` 表。
+- 实现账号注册、登录、查询接口。
+- 实现 JWT access token、refresh token、登出主动失效。
+- 通过 Redis 缓存当前有效 access token，Redis 不可用时回源 MySQL。
+- 创建 `videos` 表。
+- 实现视频发布、作者视频列表、视频详情接口。
+
+如果你还没有 MySQL 和 Redis 容器，可以在项目根目录用 compose 启动依赖：
+
+```bash
+docker compose up -d mysql redis
+```
+
+如果你已经像现在这样手动启动了容器：
+
+```text
+YYmysql  -> localhost:3306
+YYredis  -> localhost:6379
+```
+
+就不需要再执行 `docker compose up -d mysql redis`。`docker-compose.yml` 只是备用的依赖启动配置，作用等价于把 `docker run` 命令保存下来，方便以后复现环境。
+
+如果是手动创建的 MySQL 容器，还需要先创建项目数据库：
+
+```bash
+docker exec -it YYmysql mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS feedsystem CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+```
+
+这个命令只需要执行一次。后端启动时会在 `feedsystem` 数据库中自动创建 `accounts` 和 `videos` 表。
+
+在 `backend/` 目录创建虚拟环境并安装依赖：
+
+```bash
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+如果你已经安装过 Day 1 依赖，Day 2 新增了 `PyJWT` 和 `redis`，仍然需要在虚拟环境中重新执行一次：
+
+```bash
+pip install -r requirements.txt
+```
+
+在 `backend/` 目录启动后端：
+
+```bash
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+打开接口文档：
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Day 2 推荐用 Swagger 按下面顺序验证：
+
+1. `POST /account/register` 注册账号。
+2. `POST /account/login` 登录，复制返回的 `token` 和 `refresh_token`。
+3. 点击 Swagger 右上角 `Authorize`，填写 `Bearer token值`。
+4. `POST /account/me` 验证硬鉴权能拿到当前用户。
+5. `POST /video/publish` 发布视频。
+6. `POST /video/listByAuthorID` 按作者 ID 查询视频列表。
+7. `POST /video/getDetail` 不带 token 也能看详情。
+8. `POST /account/refresh` 用 `refresh_token` 换新 `token`。
+9. `POST /account/logout` 登出，再用旧 token 调硬鉴权接口应返回 401。
+
+前端会等账号和视频接口稳定后，再做一个极简页面接入登录与发布视频链路。
