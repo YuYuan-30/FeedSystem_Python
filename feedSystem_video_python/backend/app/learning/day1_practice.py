@@ -30,7 +30,8 @@ def hash_password(password: str) -> str:
     - 数据库存字符串更方便，所以最后要 decode 回字符串。
     """
     # 这一段练习对应真实的密码入库前处理逻辑。
-    # 练习：对照 `app/core/security.py` 亲手敲一遍。
+    # 源码位置：`app/core/security.py` -> `hash_password(password: str) -> str`
+    # 练习：对照上面的真实函数亲手敲一遍。
     raise NotImplementedError
 
 
@@ -45,7 +46,8 @@ def verify_password(password: str, hashed_password: str) -> bool:
     - 返回值是布尔值，Service 层再根据 True/False 决定是否允许登录。
     """
     # 这一段练习对应真实的登录密码校验逻辑。
-    # 练习：对照 `app/core/security.py` 亲手敲一遍。
+    # 源码位置：`app/core/security.py` -> `verify_password(password: str, hashed_password: str) -> bool`
+    # 练习：对照上面的真实函数亲手敲一遍。
     raise NotImplementedError
 
 
@@ -61,5 +63,6 @@ async def find_by_username_example(db, Account, username: str):
     - `scalar_one_or_none()` 表示：要么拿到一个账号对象，要么拿到 None。
     """
     # 这一段练习对应 Repository 中最典型的按条件查询一条记录。
-    # 练习：对照 `app/repositories/account_repo.py` 亲手敲一遍。
+    # 源码位置：`app/repositories/account_repo.py` -> `AccountRepository.find_by_username`
+    # 练习：对照上面的真实方法亲手敲一遍。
     raise NotImplementedError

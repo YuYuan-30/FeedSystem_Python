@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, get_current_user, get_optional_user
 from app.database import get_db
+from app.repositories.tag_repo import TagRepository
 from app.repositories.video_repo import VideoRepository
 from app.schemas.video import (
     GetVideoDetailRequest,
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/video", tags=["video"])
 
 def get_video_service(db: AsyncSession = Depends(get_db)) -> VideoService:
     """FastAPI 依赖函数：为视频查询接口组装 VideoService。"""
-    return VideoService(VideoRepository(db))
+    return VideoService(VideoRepository(db), TagRepository(db))
 
 
 @router.post("/publish", response_model=VideoPublic)
@@ -28,7 +29,7 @@ async def publish(
     db: AsyncSession = Depends(get_db),
 ) -> VideoPublic:
     """发布视频接口：必须登录，成功后把视频元数据写入 videos 表。"""
-    service = VideoService(VideoRepository(db))
+    service = VideoService(VideoRepository(db), TagRepository(db))
     video = await service.publish(
         current_user=current_user,
         title=req.title,
@@ -58,7 +59,7 @@ async def get_detail(
 ) -> VideoPublic:
     """视频详情接口：不带 token 可以访问，带了错误 token 会被软鉴权拒绝。"""
     try:
-        video = await service.get_detail(req.id)
+        detail = await service.get_detail(req.id)
     except VideoNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="video not found")
-    return VideoPublic.model_validate(video)
+    return detail

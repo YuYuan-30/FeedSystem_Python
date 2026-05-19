@@ -32,8 +32,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_models() -> None:
-    """应用启动时创建已声明的数据库表，Day 2 会生成 accounts 和 videos 表。"""
+    """应用启动时创建已声明的数据库表，包含账号、视频、点赞、评论、关注和标签。"""
     import app.models.account  # noqa: F401
+    import app.models.comment  # noqa: F401
+    import app.models.like  # noqa: F401
+    import app.models.social  # noqa: F401
+    import app.models.tag  # noqa: F401
     import app.models.video  # noqa: F401
 
     async with engine.begin() as conn:

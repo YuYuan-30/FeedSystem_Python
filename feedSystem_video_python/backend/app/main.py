@@ -3,6 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.account import router as account_router
+from app.api.comment import router as comment_router
+from app.api.feed import router as feed_router
+from app.api.like import router as like_router
+from app.api.social import router as social_router
 from app.api.video import router as video_router
 from app.config import get_settings
 from app.core.redis import close_redis
@@ -23,6 +27,10 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.include_router(account_router)
 app.include_router(video_router)
+app.include_router(like_router)
+app.include_router(comment_router)
+app.include_router(feed_router)
+app.include_router(social_router)
 
 
 @app.get("/health")

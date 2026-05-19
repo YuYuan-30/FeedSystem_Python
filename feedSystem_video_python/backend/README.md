@@ -10,6 +10,14 @@
 - 通过 Redis 缓存当前有效 access token，Redis 不可用时回源 MySQL。
 - 创建 `videos` 表。
 - 实现视频发布、作者视频列表、视频详情接口。
+- 创建 `likes` 和 `comments` 表。
+- 实现点赞、取消点赞、是否点赞接口。
+- 实现评论发布、删除、列表接口。
+- 实现最新 Feed 和点赞榜 Feed。
+- 创建 `socials`、`tags` 和 `video_tags` 表。
+- 实现关注、取关、粉丝列表、关注列表。
+- 实现关注流和标签流。
+- 通过 Redis 缓存视频详情和最新 Feed 短缓存。
 
 如果你还没有 MySQL 和 Redis 容器，可以在项目根目录用 compose 启动依赖：
 
@@ -32,7 +40,7 @@ YYredis  -> localhost:6379
 docker exec -it YYmysql mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS feedsystem CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
 ```
 
-这个命令只需要执行一次。后端启动时会在 `feedsystem` 数据库中自动创建 `accounts` 和 `videos` 表。
+这个命令只需要执行一次。后端启动时会在 `feedsystem` 数据库中自动创建 `accounts`、`videos`、`likes`、`comments`、`socials`、`tags` 和 `video_tags` 表。
 
 在 `backend/` 目录创建虚拟环境并安装依赖：
 
@@ -72,4 +80,27 @@ Day 2 推荐用 Swagger 按下面顺序验证：
 8. `POST /account/refresh` 用 `refresh_token` 换新 `token`。
 9. `POST /account/logout` 登出，再用旧 token 调硬鉴权接口应返回 401。
 
-前端会等账号和视频接口稳定后，再做一个极简页面接入登录与发布视频链路。
+Day 3 推荐继续验证：
+
+1. 用户 A 登录并发布视频。
+2. 用户 B 登录，对 A 的视频调用 `POST /like/like`。
+3. 用户 B 再次点赞同一视频，应返回 409。
+4. 用户 B 调用 `POST /like/isLiked`，应返回 `true`。
+5. 用户 B 调用 `POST /comment/publish` 发布评论。
+6. 调用 `POST /comment/listAll` 查看评论列表。
+7. 调用 `POST /feed/listLatest` 查看最新 Feed。
+8. 调用 `POST /feed/listLikesCount` 查看点赞榜 Feed。
+9. 用户 B 调用 `POST /like/unlike`，视频点赞数应减少且不会小于 0。
+
+Day 4 推荐继续验证：
+
+1. 用户 A 发布标题或描述带 `#backend` 的视频。
+2. 用户 B 调用 `POST /social/follow` 关注用户 A。
+3. 用户 B 调用 `POST /social/getAllVloggers`，应能看到 A。
+4. 用户 A 调用 `POST /social/getAllFollowers`，应能看到 B。
+5. 用户 B 调用 `POST /feed/listByFollowing`，应能看到 A 的视频。
+6. 游客或用户 B 调用 `POST /feed/listByTag`，`tag_name` 填 `backend`，应能看到带标签的视频。
+7. 连续两次调用 `POST /video/getDetail`，第二次会优先命中 Redis 详情缓存。
+8. 调用 `POST /feed/listLatest` 后，Redis 中会短暂出现 `v1:feed:latest:*` 缓存 key，默认 TTL 为 5 秒。
+
+前端当前已接入 Day1-4 的主要联调入口：账号、视频、点赞、评论、推荐 Feed、点赞榜、关注流、标签流和右侧接口日志。

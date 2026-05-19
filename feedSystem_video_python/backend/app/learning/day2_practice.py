@@ -10,6 +10,7 @@ Day 2 亲手敲练习：JWT、Redis token 缓存与鉴权依赖。
 
 def practice_create_access_token() -> None:
     """练习 1：对照 create_access_token，理解 JWT payload 为什么需要 sub、iat、exp。"""
+    # 源码位置：`app/core/auth.py` -> `create_access_token(account_id: int, username: str) -> str`
     # 你可以自己敲一遍：
     # now = datetime.now(UTC)
     # payload = {
@@ -23,6 +24,7 @@ def practice_create_access_token() -> None:
 
 def practice_parse_access_token() -> None:
     """练习 2：对照 parse_access_token，理解为什么要捕获签名错误、过期和字段缺失。"""
+    # 源码位置：`app/core/auth.py` -> `parse_access_token(token: str) -> TokenPayload`
     # 你可以自己敲一遍：
     # payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     # account_id = int(payload["sub"])
@@ -32,6 +34,8 @@ def practice_parse_access_token() -> None:
 
 async def practice_get_current_user_flow() -> None:
     """练习 3：对照 _resolve_user_from_token，理解 Redis miss 后为什么要回源 MySQL。"""
+    # 源码位置：`app/core/auth.py` -> `_resolve_user_from_token(token: str, db: AsyncSession) -> CurrentUser`
+    # 对外依赖：`app/core/auth.py` -> `get_current_user` 和 `get_optional_user`
     # 你可以自己画一遍流程：
     # 1. parse_access_token(token)
     # 2. get_cached_access_token(account_id)

@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- 当前阶段：Day 2.5 - Day1-2 前端联调工作台
+- 当前阶段：Day 4 - 关注、标签与 Redis 缓存
 - 当前日期：2026-05-11
-- 当前目标：用前端页面联调 Day1-2 已有后端接口
+- 当前目标：完成关注关系、标签流、视频详情缓存和 Feed 短缓存，并理解 Cache-Aside
 - 当前运行方式：
   - 后端 FastAPI：本地运行
   - 前端：本地运行
@@ -115,6 +115,132 @@
    - 发布视频
    - 查询作者视频列表
    - 查询视频详情
+42. 已开始 Day3 后端任务：点赞、评论、事务和基础 Feed。
+43. 已参考 Go 版本点赞、评论和 Feed 关键流程。
+44. 已新增 `likes` 表模型，并建立 `(video_id, account_id)` 联合唯一约束。
+45. 已新增 `comments` 表模型。
+46. 已实现点赞模块：
+   - `POST /like/like`
+   - `POST /like/unlike`
+   - `POST /like/isLiked`
+47. 已实现评论模块：
+   - `POST /comment/publish`
+   - `POST /comment/delete`
+   - `POST /comment/listAll`
+48. 已实现基础 Feed：
+   - `POST /feed/listLatest`
+   - `POST /feed/listLikesCount`
+49. 已将点赞关系写入和 `videos.likes_count` 更新放入同一个请求事务。
+50. 已实现取消点赞时 `likes_count` 防负数。
+51. 已实现 Feed 的 `is_liked` 批量补充逻辑。
+52. 已新增 Day3 学习材料：
+   - `backend/app/learning/day3_notes.md`
+   - `backend/app/learning/day3_practice.py`
+53. 已更新后端 README，补充 Day3 Swagger 验证顺序。
+54. 已运行 `python -m compileall backend\app`，Day3 代码语法检查通过。
+55. 已通过本地接口验证 Day3 最小链路：
+   - 用户 A 发布视频。
+   - 用户 B 点赞。
+   - 用户 B 查询是否点赞。
+   - 用户 B 发布评论。
+   - 查询评论列表。
+   - 查询最新 Feed。
+   - 查询点赞榜 Feed。
+   - 用户 B 取消点赞后视频点赞数回到 0。
+56. 已验证同一用户重复点赞会返回 409。
+57. 已将前端从“联调工作台”改成“正常业务主页面 + 右侧接口日志栏”。
+58. 前端已接入 Day3 接口：
+   - 最新 Feed
+   - 点赞榜 Feed
+   - 点赞 / 取消点赞 / 是否点赞
+   - 评论发布 / 评论列表
+59. 已确定当前视频和封面资源策略：
+   - 暂不收集真实图片也不做上传。
+   - 前端根据视频 ID 生成稳定色块占位。
+   - `play_url` 和 `cover_url` 仍保留入库字段，默认使用 `debug://...` 占位值。
+60. 已运行 `npm run build`，前端新布局构建通过。
+61. 已确认 `http://127.0.0.1:5173` 返回 200。
+62. 已根据用户反馈继续调整前端：
+   - 参考 Go 版本 AppShell，把主区域改成左侧导航 + 中间业务主区域。
+   - 右侧继续保留接口日志。
+   - 中等宽度下日志自动下移，避免主功能区被挤压。
+   - 窄屏下导航、Feed、详情改为单列布局。
+63. 已再次运行 `npm run build`，新版响应式布局构建通过。
+64. 根据用户反馈做前端小调整：
+   - 删除 Feed 区顶部“最新/点赞榜”重复切换按钮。
+   - 只保留左侧导航作为榜单切换入口。
+   - Feed 标题区只展示当前模式和刷新按钮。
+   - 放宽宽屏下 Feed 与详情的网格宽度。
+   - Feed 卡片描述改为最多两行，降低文字堆积感。
+65. 已再次运行 `npm run build`，本次 UI 小改构建通过。
+66. 根据浏览器截图修复视频详情卡布局：
+   - 视频占位区改为详情卡顶部完整宽度展示。
+   - 标题、描述、计数和按钮放在视频下方。
+   - 避免宽屏时详情文字堆积在视频右侧。
+67. 已再次运行 `npm run build`，详情卡修复构建通过。
+68. 根据用户截图继续修复前端：
+   - 清空登录和注册表单默认用户名/密码，只保留 placeholder。
+   - 缩小左侧导航和右侧日志栏宽度占用。
+   - 取消详情列过大的最小宽度，避免视频详情卡超出外层容器。
+   - 视频占位高度改为 `clamp` 响应式高度。
+69. 已再次运行 `npm run build`，本次修复构建通过。
+70. 开始 Day4：关注、标签与 Redis 缓存。
+71. 新增 `socials` 表模型，并使用 `(follower_id, vlogger_id)` 联合唯一约束防止重复关注。
+72. 新增关注模块：
+   - `app/models/social.py`
+   - `app/schemas/social.py`
+   - `app/repositories/social_repo.py`
+   - `app/services/social_service.py`
+   - `app/api/social.py`
+73. 实现关注接口：
+   - `POST /social/follow`
+   - `POST /social/unfollow`
+   - `POST /social/getAllFollowers`
+   - `POST /social/getAllVloggers`
+   - `POST /social/getCounts`
+74. 新增标签模块：
+   - `app/models/tag.py`
+   - `app/core/tags.py`
+   - `app/repositories/tag_repo.py`
+75. 发布视频时会从标题和描述中提取 `#tag`，写入 `tags` 和 `video_tags` 表。
+76. 新增 Feed 查询：
+   - `POST /feed/listByFollowing`
+   - `POST /feed/listByTag`
+77. 扩展 Redis 工具：
+   - JSON 缓存读写。
+   - 视频详情缓存 key。
+   - 最新 Feed 短缓存 key。
+   - 按前缀删除缓存。
+78. 视频详情接口接入 Cache-Aside：
+   - 先查 Redis。
+   - miss 后查 MySQL。
+   - 回填 Redis，TTL 300 秒。
+79. 最新 Feed 接入短 TTL 缓存，缓存 key 包含 `viewer_id`，避免 `is_liked` 个性化字段串用户。
+80. 点赞、取消点赞、评论发布、评论删除后会删除视频详情缓存。
+81. 发布视频后会删除最新 Feed 缓存，避免新视频发布后列表短时间不刷新。
+82. 前端新增 Day4 API 封装：
+   - `frontend/src/api/social.ts`
+   - `listByFollowing`
+   - `listByTag`
+83. 前端左侧导航新增关注流和标签流入口，视频详情区新增关注作者和取关作者按钮。
+84. 新增 Day4 学习材料：
+   - `backend/app/learning/day4_notes.md`
+   - `backend/app/learning/day4_practice.py`
+85. 更新后端 README，补充 Day4 验证顺序。
+86. 已运行 `python -m compileall .\feedSystem_video_python\backend\app`，Day4 后端语法检查通过。
+87. 已运行 `npm run build`，Day4 前端构建通过。
+88. 已通过本地 HTTP 验证 Day4 最小链路：
+   - 用户 A 发布带 `#backend` 的视频。
+   - 用户 B 关注用户 A。
+   - 标签流能查到视频。
+   - 关注流能查到视频。
+   - `socials`、`tags`、`video_tags` 均写入 MySQL。
+   - 视频详情缓存和最新 Feed 短缓存均能写入 Redis。
+89. 根据用户截图修复 Day4 后前端视频详情页样式：
+   - 将详情元信息区 `.video-meta` 从两列改为单列。
+   - 避免关注/取关按钮组挤压标题宽度。
+   - 标题改用正常换行，避免被压成逐字竖排。
+   - 已再次运行 `npm run build`，构建通过。
 
 ## 关键约定
 
@@ -274,6 +400,66 @@ Docker 运行:
   - 发布视频 ID `3`
   - 作者视频列表返回 1 条
   - 视频详情标题为 `Frontend integration video`
+- 记录用户新的前端想法：后续前端从“联调工作台”改成“正常业务页面 + 侧边栏日志输出”的形态。
+- 开始 Day3：点赞、评论、事务和基础 Feed 分页。
+- 新增 `likes` 表：
+  - `video_id`
+  - `account_id`
+  - `created_at`
+  - 联合唯一约束 `uq_likes_video_account`
+- 新增 `comments` 表：
+  - `video_id`
+  - `author_id`
+  - `username`
+  - `content`
+  - `created_at`
+- 新增点赞 Repository / Service / API。
+- 新增评论 Repository / Service / API。
+- 新增 Feed Repository / Service / API。
+- 扩展 `VideoRepository`：
+  - 判断视频是否存在。
+  - 增加点赞数和热度。
+  - 减少点赞数和热度并防负数。
+  - 最新 Feed 查询。
+  - 点赞榜复合游标查询。
+- 注册 Day3 路由到 `app/main.py`。
+- 更新数据库初始化导入，让应用启动时自动创建 `likes` 和 `comments` 表。
+- 新增 `day3_notes.md`，写清点赞、评论、Feed 的函数链路和数据流。
+- 新增 `day3_practice.py`，预留事务和复合游标的亲手敲练习。
+- 运行 `python -m compileall .\feedSystem_video_python\backend\app`，语法检查通过。
+- 通过本地 HTTP 验证 Day3 链路：
+  - 测试用户 A：`day3_a_41842`
+  - 测试用户 B：`day3_b_41842`
+  - 视频 ID：`5`
+  - 评论 ID：`1`
+  - 最新 Feed 返回 5 条
+  - 点赞榜 Feed 返回 5 条
+  - 取消点赞后 `likes_count = 0`
+- 验证重复点赞：
+  - 视频 ID：`6`
+  - 第二次点赞返回 HTTP 409
+- 按用户想法改造前端布局：
+  - 主区域展示正常 Feed 页面和视频详情。
+  - 右侧固定侧边栏展示接口日志。
+  - 视频和封面暂时使用稳定色块占位，不需要先收集真实图片。
+- 新增前端 Day3 API 封装：
+  - `frontend/src/api/feed.ts`
+  - `frontend/src/api/like.ts`
+  - `frontend/src/api/comment.ts`
+- 扩展前端类型：
+  - Feed 响应。
+  - 点赞响应。
+  - 评论响应。
+- 执行 `npm run build`，新前端构建通过。
+- 根据用户反馈，继续精简主功能区并修复窗口大小变化时的布局挤压：
+  - 参考 Go 版本的 `AppShell.vue` 和 `FeedVideoCard.vue`。
+  - 改成左侧导航、主内容区、右侧日志区。
+  - 删除原先占据主区域的大块账号表单，改成右上角账号弹层。
+  - 增加 1260px、1040px、720px、460px 响应式断点。
+  - 再次执行 `npm run build`，构建通过。
+- 根据用户继续反馈，删除顶部重复榜单切换按钮，只保留左侧导航切换；同时调整 Feed 卡片宽度和描述行数，减少宽屏下文字堆积。
+- 根据用户截图，修复视频详情页横向挤压问题：详情区改成上方视频占位、下方元信息和操作按钮。
+- 根据用户继续截图反馈，修复详情容器超出外层容器的问题，并清空登录/注册表单预填值。
 
 ## 待办清单
 
@@ -313,6 +499,37 @@ Docker 运行:
 - [x] Day 2.5：前端构建通过。
 - [x] Day 2.5：前端代理到后端 health 通过。
 - [x] Day 2.5：通过前端代理完成注册、登录、发布视频、列表、详情联调。
+- [x] Day 3：讲解点赞为什么需要事务。
+- [x] Day 3：创建 `likes` 表。
+- [x] Day 3：创建 `comments` 表。
+- [x] Day 3：实现点赞。
+- [x] Day 3：实现取消点赞。
+- [x] Day 3：实现是否点赞。
+- [x] Day 3：实现评论发布。
+- [x] Day 3：实现评论删除。
+- [x] Day 3：实现评论列表。
+- [x] Day 3：实现最新 Feed 游标分页。
+- [x] Day 3：实现点赞榜复合游标分页。
+- [x] Day 3：新增学习笔记和练习文件。
+- [x] Day 3：基础语法检查。
+- [x] Day 3：本地接口验证点赞、评论、Feed 链路。
+- [x] Day 3：验证重复点赞返回 409。
+- [x] Day 3：前端接入点赞、评论和 Feed。
+- [x] 前端后续改版：正常业务页面 + 侧边栏日志输出。
+- [x] Day 4：讲解关注关系为什么是多对多。
+- [x] Day 4：创建 `socials` 表。
+- [x] Day 4：实现关注和取关。
+- [x] Day 4：实现粉丝列表和关注列表。
+- [x] Day 4：创建 `tags` 和 `video_tags` 表。
+- [x] Day 4：发布视频时提取 `#tag`。
+- [x] Day 4：实现标签流。
+- [x] Day 4：实现关注流。
+- [x] Day 4：视频详情接入 Redis Cache-Aside。
+- [x] Day 4：最新 Feed 接入 Redis 短 TTL 缓存。
+- [x] Day 4：新增学习笔记和练习文件。
+- [x] Day 4：后端语法检查。
+- [x] Day 4：前端构建检查。
+- [x] Day 4：本地接口验证关注、标签和缓存链路。
 
 ## 决策记录
 
@@ -338,6 +555,23 @@ Docker 运行:
 | 2026-05-11 | 前端先做联调工作台，不做完整产品页 | 当前阶段的核心目标是把 Day1-2 后端链路从浏览器跑通 |
 | 2026-05-11 | 前端通过 Vite `/api` 代理访问 FastAPI | 前后端都本地运行，避免浏览器跨域干扰学习 |
 | 2026-05-11 | 前端暂不做文件上传，只保存视频 URL | 后端 Day2 只实现视频元数据，文件上传后续再扩展 |
+| 2026-05-11 | Day3 先完成后端接口，前端 Day3 接入后置 | 用户希望先完成 Day3 任务，前端布局改版后续再做 |
+| 2026-05-11 | 点赞关系和视频计数在同一个事务提交 | 防止 likes 表和 videos.likes_count 出现不一致 |
+| 2026-05-11 | likes 表使用 `(video_id, account_id)` 联合唯一约束 | 从数据库层保证同一用户不能重复点赞同一视频 |
+| 2026-05-11 | 点赞榜使用 `likes_count + id` 复合游标 | 解决点赞数相同导致翻页重复或漏数据的问题 |
+| 2026-05-11 | 后续前端改成“主页面 + 侧边栏日志” | 既保留学习调试信息，又让主体验更像正常产品页面 |
+| 2026-05-11 | 视频和封面先用稳定色块占位 | 当前后端还没有上传和静态资源服务，先避免被素材问题阻塞联调 |
+| 2026-05-11 | 前端主区域参考 Go 版 AppShell 精简 | 让页面更像真实产品页，避免表单堆叠占据主要体验 |
+| 2026-05-11 | 日志栏在中等宽度自动下移 | 避免浏览器窗口变化时主功能区被右侧日志挤压 |
+| 2026-05-11 | 关注关系使用 `socials(follower_id, vlogger_id)` 关系表 | 用户和作者是多对多关系，不能塞进账号表单字段 |
+| 2026-05-11 | 标签使用 `tags` + `video_tags` 建模 | 视频和标签也是多对多关系，标签名需要唯一复用 |
+| 2026-05-11 | 发布视频时同步提取标签并写入关系表 | 当前 MVP 先保证发布后标签流立刻可查，MQ 后续再预留 |
+| 2026-05-11 | Redis 继续只做性能层，不做数据真相 | Redis 清空或宕机时仍可回源 MySQL，避免核心业务依赖缓存正确性 |
+| 2026-05-11 | 视频详情使用 Cache-Aside | 读多写少场景适合先查缓存、miss 查 DB、再回填缓存 |
+| 2026-05-11 | 写操作后删除缓存，而不是直接更新缓存 | 删除更简单可靠，避免并发写时旧响应覆盖新响应 |
+| 2026-05-11 | 最新 Feed 只做 5 秒短缓存 | Feed 变化频繁，短 TTL 平衡性能和新鲜度 |
+| 2026-05-11 | 最新 Feed 缓存 key 包含 `viewer_id` | Feed 响应里有 `is_liked`，不同用户不能共享个性化缓存 |
+| 2026-05-11 | 视频详情元信息区改为单列布局 | Day4 增加关注按钮后，两列布局会压缩标题宽度，导致标题逐字换行 |
 
 ## 面试素材积累
 
@@ -436,3 +670,65 @@ Docker 运行:
 可以这样回答：
 
 > 因为浏览器会遇到跨域限制。开发环境里用 Vite proxy 是很常见的做法，前端代码只请求同源的 `/api`，由开发服务器转发到后端。这样既贴近真实前后端分离开发，也避免我们现在为了联调先引入 CORS 配置干扰学习重点。
+
+### Day 3：点赞、评论、事务与游标分页
+
+面试官如果问“点赞模块你是怎么设计的”，可以这样讲：
+
+> 点赞不是简单地把视频表的点赞数字段加一。我设计了 `likes` 关系表保存用户和视频的点赞关系，并给 `(video_id, account_id)` 加联合唯一约束，从数据库层保证同一用户不能重复点赞同一视频。同时在 `videos.likes_count` 里冗余点赞数，用于 Feed 列表展示和点赞榜排序。点赞接口会在同一个数据库事务里插入 `likes` 记录并更新 `videos.likes_count`，任何一步失败都会回滚，避免关系表和计数字段不一致。
+
+这段可以串起来讲的后端知识点：
+
+1. **关系表与冗余计数**：`likes` 表保证“谁点过赞”的正确性，`videos.likes_count` 优化列表读取和排序。
+2. **唯一索引**：业务层先查是否已点赞，数据库层再用联合唯一索引兜底，防止并发重复插入。
+3. **事务一致性**：点赞关系插入和计数更新必须一起提交，取消点赞也要删除关系并减少计数。
+4. **防负数**：取消点赞时用 `GREATEST(likes_count - 1, 0)` 防止计数异常变成负数。
+5. **软鉴权 Feed**：Feed 不登录也能看，登录后批量查询当前用户点赞过的视频 ID，补充 `is_liked`。
+6. **游标分页**：最新 Feed 用 `create_time` 游标；点赞榜用 `likes_count + id` 复合游标。
+
+可能追问：为什么不每次动态 `count(likes)`？
+
+可以这样回答：
+
+> 动态 count 在单个视频详情页还可以接受，但 Feed 一页会有多条视频，点赞榜还要按点赞数排序。如果每次都从 `likes` 表聚合，查询成本会很高。所以我用 `likes` 表保存关系，用 `videos.likes_count` 做读优化，写入时通过事务维护两边一致。
+
+可能追问：为什么点赞榜不用 offset 分页？
+
+可以这样回答：
+
+> offset 在深分页时性能会变差，而且 Feed 数据会不断变化，容易出现重复或漏数据。点赞榜使用 `likes_count DESC, id DESC` 排序，下一页带上上一页最后一条的 `likes_count` 和 `id`，条件是 `likes_count < cursor_likes OR (likes_count = cursor_likes AND id < cursor_id)`，这样即使很多视频点赞数相同，也能稳定向后翻页。
+
+### Day 4：关注、标签与 Redis 缓存
+
+面试官如果问“关注和标签模块你是怎么设计的”，可以这样讲：
+
+> Day 4 我补了关系型业务和缓存层。关注关系用 `socials(follower_id, vlogger_id)` 表示多对多，并用联合唯一约束防止重复关注。标签用 `tags` 和 `video_tags` 建模，因为视频和标签也是多对多；发布视频时从标题和描述里提取 `#tag`，在同一个数据库事务里写入视频和标签关系。Feed 部分新增了关注流和标签流，本质上都是在视频查询前增加关系过滤。
+
+这段可以串起来讲的后端知识点：
+
+1. **多对多关系建模**：关注是用户和作者的多对多，标签是视频和标签的多对多，所以都需要关系表。
+2. **唯一约束兜底**：`socials(follower_id, vlogger_id)` 和 `tags.name` 都用唯一约束保证数据不会重复。
+3. **发布链路扩展**：发布视频不只写 `videos`，还会提取 `#tag` 并写入 `tags/video_tags`，让标签流立即可查。
+4. **关注流查询**：先从 `socials` 查当前用户关注的作者，再查询这些作者发布的视频。
+5. **标签流查询**：通过 `videos JOIN video_tags JOIN tags` 查指定标签下的视频。
+6. **Redis Cache-Aside**：视频详情先读 Redis，miss 查 MySQL，再回填 Redis。
+7. **写后删缓存**：点赞、取消点赞、评论变化会影响详情，所以写 DB 后删除详情缓存。
+8. **短 TTL Feed 缓存**：最新 Feed 变化快，所以只做 5 秒短缓存。
+
+可能追问：Redis 挂了为什么数据不会丢？
+
+可以这样回答：
+
+> 因为项目里 MySQL 才保存业务事实，比如账号、视频、点赞、评论、关注和标签；Redis 只保存能从 MySQL 重新查出来的缓存。Redis 挂了以后，缓存读写函数会失败返回，业务继续查 MySQL，所以正确性不受影响，只是性能下降。
+
+可能追问：为什么写操作后删除缓存，而不是更新缓存？
+
+可以这样回答：
+
+> 更新缓存需要重新组装完整响应，容易漏字段；并发写时也可能出现旧数据覆盖新数据。删除缓存更简单可靠：下一次读请求发现 miss，就从 MySQL 读最新数据并回填。这就是 Cache-Aside 里常见的写策略。
+
+可能追问：为什么最新 Feed 缓存 key 里要带 `viewer_id`？
+
+可以这样回答：
+
+> 因为 Feed 响应里有 `is_liked`，它和当前用户有关。同一条视频，A 用户可能点过赞，B 用户没有点过赞。如果 Feed 缓存不区分用户，就可能把 A 的点赞状态返回给 B。所以游客用 `viewer=0`，登录用户用自己的账号 ID。
