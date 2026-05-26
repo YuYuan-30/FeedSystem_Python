@@ -1,6 +1,7 @@
 from sqlalchemy.exc import IntegrityError
 
 from app.core.auth import CurrentUser
+from app.core.events import EventPublisher
 from app.core.redis import delete_cache_key, video_detail_cache_key
 from app.repositories.like_repo import LikeRepository
 from app.repositories.video_repo import VideoRepository
@@ -19,10 +20,16 @@ class NotLikedError(Exception):
 
 
 class LikeService:
-    def __init__(self, like_repo: LikeRepository, video_repo: VideoRepository):
-        """注入点赞关系和视频数据访问对象，保证点赞关系和计数字段一起处理。"""
+    def __init__(
+        self,
+        like_repo: LikeRepository,
+        video_repo: VideoRepository,
+        publisher: EventPublisher | None = None,
+    ):
+        """注入点赞关系、视频数据访问对象和事件发布器，保留 MQ 扩展点。"""
         self.like_repo = like_repo
         self.video_repo = video_repo
+        self.publisher = publisher or EventPublisher()
 
     async def like(self, current_user: CurrentUser, video_id: int) -> None:
         """点赞业务：校验视频存在，插入点赞关系，并增加视频冗余计数。"""
@@ -30,6 +37,10 @@ class LikeService:
             raise VideoNotFoundError
         if await self.like_repo.is_liked(video_id, current_user.id):
             raise AlreadyLikedError
+
+        published = await self.publisher.publish_like(current_user.id, video_id)
+        if published:
+            return
 
         try:
             await self.like_repo.create(video_id=video_id, account_id=current_user.id)
@@ -42,6 +53,10 @@ class LikeService:
         """取消点赞业务：删除点赞关系，并用 SQL 表达式安全减少视频计数。"""
         if not await self.video_repo.exists(video_id):
             raise VideoNotFoundError
+        published = await self.publisher.publish_unlike(current_user.id, video_id)
+        if published:
+            return
+
         deleted = await self.like_repo.delete(video_id=video_id, account_id=current_user.id)
         if not deleted:
             raise NotLikedError

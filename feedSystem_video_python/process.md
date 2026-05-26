@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- 当前阶段：Day 4 - 关注、标签与 Redis 缓存
-- 当前日期：2026-05-11
-- 当前目标：完成关注关系、标签流、视频详情缓存和 Feed 短缓存，并理解 Cache-Aside
+- 当前阶段：Day 6 - Redis 锁与缓存防击穿
+- 当前日期：2026-05-20
+- 当前目标：完成视频详情缓存防击穿，并补齐 Day1-6 学习笔记的数据流说明
 - 当前运行方式：
   - 后端 FastAPI：本地运行
   - 前端：本地运行
@@ -241,6 +241,77 @@
    - 避免关注/取关按钮组挤压标题宽度。
    - 标题改用正常换行，避免被压成逐字竖排。
    - 已再次运行 `npm run build`，构建通过。
+90. 开始 Day5：限流、MQ 扩展点与工程化收口。
+91. 新增 Redis 固定窗口限流工具：
+   - `app/core/ratelimit.py`
+   - `rate_limit_key`
+   - `allow_request`
+   - `rate_limit_by_ip`
+   - `rate_limit_by_account`
+92. 注册和登录接口已接入按 IP 限流：
+   - `/account/register`：1 分钟 10 次。
+   - `/account/login`：1 分钟 20 次。
+93. 点赞、取消点赞接口已接入按账号限流：
+   - `/like/like`
+   - `/like/unlike`
+   - 1 分钟 60 次。
+94. 评论写接口已接入按账号限流：
+   - `/comment/publish`
+   - `/comment/delete`
+   - 1 分钟 30 次。
+95. 关注写接口已接入按账号限流：
+   - `/social/follow`
+   - `/social/unfollow`
+   - 1 分钟 30 次。
+96. 新增 MQ 预留扩展点：
+   - `app/core/events.py`
+   - `EventPublisher.publish_like`
+   - `EventPublisher.publish_unlike`
+   - `EventPublisher.publish_comment`
+   - `EventPublisher.publish_follow`
+   - `EventPublisher.publish_unfollow`
+97. 当前 `EventPublisher` 默认返回 `False`，表示没有真实 MQ 可用，业务继续走同步 MySQL 事务。
+98. 已将 `EventPublisher` 接入点赞、评论和关注 Service，保留以后替换为 RabbitMQ Publisher 的位置。
+99. 新增 Day5 学习材料：
+   - `backend/app/learning/day5_notes.md`
+   - `backend/app/learning/day5_practice.py`
+100. 更新后端 README，补充 Day5 限流、Redis key、MQ 预留验证说明。
+101. 已运行 `python -m compileall .\feedSystem_video_python\backend\app`，Day5 后端语法检查通过。
+102. 已运行 `npm run build`，前端构建通过。
+103. 根据用户反馈修复前端接口日志不稳定问题：
+   - 原因一：日志列表 key 使用 `时间 + 标题`，同一秒重复请求同一接口时会发生 key 冲突。
+   - 原因二：原来只记录业务动作，API client 内部的自动 refresh、retry、429 等真实 HTTP 请求不会逐条显示。
+   - 现在由 `frontend/src/api/client.ts` 为每一次真实 HTTP 请求派发 `api-request-log` 事件。
+   - `App.vue` 统一监听事件并写入右侧日志栏。
+   - 每条日志改用递增 `id` 作为 Vue key，最多保留最近 40 条。
+   - 已运行 `npm run build`，构建通过。
+104. 已读取项目根目录 `next.md`，并对照 Go/Python 当前实现后更新 `plan.md`：
+   - 明确 Python 版 Day1-5 已完成核心业务 MVP。
+   - 明确后续差距主要在 Redis 缓存保护、Feed 冷热分离、ZSET 热榜、Outbox、通知、测试和业务生命周期。
+   - 已在 `plan.md` 新增 Day 6-11 后续路线。
+   - 后续仍不接 RabbitMQ，但继续保留 `EventPublisher`、`TimelineWriter`、`PopularityWriter`、Outbox 等扩展边界。
+105. 已完成 Day6：Redis 锁与缓存防击穿。
+   - 新增 `app/core/redis_lock.py`。
+   - 新增 `app/core/cache_protector.py`。
+   - `VideoService.get_detail` 已改为调用缓存保护工具。
+   - 缓存 miss 后会尝试抢 Redis 锁。
+   - 抢到锁后 double-check Redis，再回源 MySQL 并回填缓存。
+   - 释放锁使用随机 token + Lua 脚本，避免误删其他请求的新锁。
+106. 已新增 Day6 学习材料：
+   - `backend/app/learning/day6_notes.md`
+   - `backend/app/learning/day6_practice.py`
+107. 已更新后端 README，补充 Day6 视频详情缓存防击穿验证说明。
+108. 已检查 Day1-6 notes 的数据流覆盖，并补齐缺口：
+   - Day3 补充评论发布、删除、列表的输入输出、MySQL 和缓存失效说明。
+   - Day4 补充粉丝列表、关注列表、关注计数的数据流。
+   - Day5 补充限流请求数据流、FastAPI Depends 与 Middleware 的区别、EventPublisher 在点赞/评论/关注中的当前流向。
+109. 已运行项目虚拟环境语法检查：
+   - `E:\feedSystem_video\backend_vnev\Scripts\python.exe -m compileall E:\feedSystem_video\feedSystem_video_python\backend\app`
+   - 检查通过。
+110. 已用项目虚拟环境和本地 Redis 验证 Day6 锁行为：
+   - 第一次抢锁返回 `locked True`。
+   - 第二次抢同一把锁返回 `second_locked False`。
+   - 释放后锁 key 不存在：`exists_after_release 0`。
 
 ## 关键约定
 
@@ -530,6 +601,28 @@ Docker 运行:
 - [x] Day 4：后端语法检查。
 - [x] Day 4：前端构建检查。
 - [x] Day 4：本地接口验证关注、标签和缓存链路。
+- [x] Day 5：讲解 Redis 固定窗口限流。
+- [x] Day 5：实现限流工具。
+- [x] Day 5：注册和登录接入按 IP 限流。
+- [x] Day 5：点赞、评论、关注写接口接入按账号限流。
+- [x] Day 5：讲解 MQ 预留扩展点。
+- [x] Day 5：新增 `EventPublisher` 空实现。
+- [x] Day 5：将事件发布扩展点接入点赞、评论和关注 Service。
+- [x] Day 5：新增学习笔记和练习文件。
+- [x] Day 5：更新后端 README。
+- [x] Day 5：后端语法检查。
+- [x] Day 5：前端构建检查。
+- [x] Day 5 后：读取 `next.md` 并更新后续规划。
+- [x] Day 6：Redis 锁、缓存防击穿、视频详情缓存保护。
+- [x] Day 6：新增学习笔记和练习文件。
+- [x] Day 6：检查并补齐 Day1-6 notes 数据流覆盖。
+- [x] Day 6：后端语法检查。
+- [x] Day 6：Redis 锁行为验证。
+- [ ] Day 7：最新 Feed Redis ZSET 时间线与冷热分离。
+- [ ] Day 8：热度榜 DB fallback 与 Redis 分钟桶。
+- [ ] Day 9：账号安全、视频更新删除和可选文件上传。
+- [ ] Day 10：通知系统和 `@mention`。
+- [ ] Day 11：测试、Alembic 迁移和可观测性。
 
 ## 决策记录
 
@@ -572,6 +665,16 @@ Docker 运行:
 | 2026-05-11 | 最新 Feed 只做 5 秒短缓存 | Feed 变化频繁，短 TTL 平衡性能和新鲜度 |
 | 2026-05-11 | 最新 Feed 缓存 key 包含 `viewer_id` | Feed 响应里有 `is_liked`，不同用户不能共享个性化缓存 |
 | 2026-05-11 | 视频详情元信息区改为单列布局 | Day4 增加关注按钮后，两列布局会压缩标题宽度，导致标题逐字换行 |
+| 2026-05-20 | 限流使用 Redis `INCR + EXPIRE` 固定窗口 | 实现简单，适合 Day5 学习限流核心思想 |
+| 2026-05-20 | 注册和登录按 IP 限流 | 未登录阶段还没有账号身份，只能用 IP 作为 subject |
+| 2026-05-20 | 点赞、评论、关注按账号限流 | 登录后的写操作用账号 ID 比 IP 更准确 |
+| 2026-05-20 | Redis 限流异常时放行请求 | 当前项目里 Redis 是保护层，不是业务真相，不能让限流成为单点故障 |
+| 2026-05-20 | MQ 当前只预留 `EventPublisher`，不接 RabbitMQ | 先保留架构扩展点，同时避免引入 Worker、重试、死信队列等额外复杂度 |
+| 2026-05-20 | 前端接口日志改由 API client 逐请求上报 | 让右侧日志更接近后端终端里的真实 HTTP 请求记录，也能显示自动续签和重试 |
+| 2026-05-20 | Day 5 后优先补 Redis/Feed/Outbox 深度，不马上接 RabbitMQ | 这些能力最能提升面试讨论价值，同时不会把学习复杂度一下推到 MQ、Worker 和死信队列 |
+| 2026-05-20 | 后续写操作继续同步落 MySQL，派生动作预留事件边界 | 先保证业务正确性；以后接 MQ 时只替换 Publisher/Worker，不重写主业务链路 |
+| 2026-05-20 | Day6 缓存防击穿放在 Service 调用的 core 工具里，而不是中间件 | 视频详情缓存是业务读优化，需要 Service 提供回源函数；中间件更适合全局横切逻辑 |
+| 2026-05-20 | Redis 锁释放使用随机 token + Lua 脚本 | 防止锁过期后旧请求误删新请求持有的锁 |
 
 ## 面试素材积累
 
@@ -580,6 +683,44 @@ Docker 运行:
 ### 项目总述草稿
 
 这是一个仿短视频平台的 Feed 流后端系统。我用 Python/FastAPI 重构 Go 参考项目，重点学习真实后端项目中的分层设计、数据库建模、JWT 鉴权、事务一致性、Feed 分页和 Redis 缓存。当前 MVP 先不接 RabbitMQ，而是通过同步 MySQL 事务保证核心数据正确，同时在 Service 层预留事件发布接口，方便后续升级为异步优先、失败降级直写的架构。
+
+### Day 5 后：为什么还要继续完善
+
+面试官如果问“既然核心功能已经能跑，为什么还要继续做 Day 6 之后的内容”，可以这样讲：
+
+> Day 1-5 证明了系统的基础业务闭环：账号、鉴权、视频、点赞、评论、关注、标签、Feed、缓存和限流都能跑通。但和 Go 参考版本相比，现在的 Python 版更多是功能正确，还没有充分处理高并发和故障场景。接下来我不会马上引入 RabbitMQ，而是先补 Redis 锁、缓存防击穿、Feed 冷热分离、ZSET 热榜、Outbox 和测试这些能力。这样可以先把系统从“CRUD 能跑”推进到“能讲清楚性能、稳定性和一致性取舍”的程度。
+
+可以这样串知识点：
+
+1. **缓存保护**：简单 Cache-Aside 只能减少正常读压力，但热门 key 过期时可能发生缓存击穿，所以要学习 Redis 锁、double-check 和短暂等待。
+2. **Feed 冷热分离**：最新流首页属于热数据，适合用 Redis ZSET 保存最近视频 ID；历史翻页属于冷数据，直接查 MySQL，不污染 Redis。
+3. **热榜滑动窗口**：点赞榜是累计值，热榜更关心最近一段时间的增量，所以可以用分钟桶 ZSET 记录热度变化。
+4. **Outbox 预留 MQ**：暂时不接 RabbitMQ，但可以先把事件记录在 MySQL outbox 表里，理解数据库和消息发布之间的一致性问题。
+5. **测试和迁移**：项目能跑不等于可靠，后续要用 pytest 固定核心链路，用 Alembic 管理表结构变化。
+
+一句话总结：
+
+> Day 5 后的目标不是堆功能，而是补工程深度：在不引入 MQ 的前提下，先把缓存、Feed、热榜、事件边界和测试做扎实，为以后真正接 RabbitMQ 留出平滑升级路径。
+
+### Day 6：Redis 锁与缓存防击穿
+
+面试官如果问“你的视频详情缓存是怎么防击穿的”，可以这样讲：
+
+> 一开始视频详情是普通 Cache-Aside：先查 Redis，miss 后查 MySQL，再写回 Redis。但如果热门视频缓存过期，很多请求会同时 miss，进而一起打到 MySQL。Day6 我把这个链路升级成了带保护的回源：缓存 miss 后先用 Redis `SET NX EX` 抢锁，抢到锁的请求 double-check 缓存后负责查库和回填；没抢到锁的请求短暂等待后再读缓存，仍然没有才降级查 MySQL。释放锁时用随机 token 和 Lua 脚本，避免误删其他请求后来抢到的锁。
+
+这段可以串起来讲的后端知识点：
+
+1. **缓存击穿**：热点 key 过期瞬间，大量请求同时回源数据库。
+2. **Redis 分布式锁**：用 `SET key token NX EX ttl` 保证同一时间只有一个请求构建缓存。
+3. **Double-check**：抢到锁后再读一次缓存，避免重复查库。
+4. **Lua 安全解锁**：判断 token 和删除 key 必须原子执行。
+5. **降级策略**：Redis 出错时仍然回源 MySQL，保证正确性优先。
+
+可能追问：为什么不用 Python 进程内锁？
+
+可以回答：
+
+> 进程内锁只能保护当前 Python 进程。如果以后 uvicorn 开多个 worker 或部署多台机器，每个进程的锁互相看不见。Redis 锁是所有进程共享的，更适合保护分布式环境下的热点缓存回源。
 
 ### Day 1：账号注册登录模块
 
@@ -732,3 +873,36 @@ Docker 运行:
 可以这样回答：
 
 > 因为 Feed 响应里有 `is_liked`，它和当前用户有关。同一条视频，A 用户可能点过赞，B 用户没有点过赞。如果 Feed 缓存不区分用户，就可能把 A 的点赞状态返回给 B。所以游客用 `viewer=0`，登录用户用自己的账号 ID。
+
+### Day 5：限流、MQ 扩展点与工程化收口
+
+面试官如果问“最后阶段你做了什么工程化补充”，可以这样讲：
+
+> Day 5 我主要做工程化收口。首先用 Redis 的 `INCR + EXPIRE` 实现固定窗口限流，注册和登录按 IP 限流，点赞、评论、关注按账号限流。限流 Redis 异常时当前选择 fail-open，也就是放行请求，因为在这个项目里 Redis 是保护层和性能层，不是业务真相。然后我加了 `EventPublisher` 事件发布接口，当前没有接 RabbitMQ，所以默认返回 False，业务仍然走同步 MySQL 事务；以后如果要接 MQ，只需要替换 Publisher，并保留当前同步路径作为降级兜底。
+
+这段可以串起来讲的后端知识点：
+
+1. **限流目标**：保护注册、登录、点赞、评论、关注这些容易被刷的写接口。
+2. **固定窗口**：用 Redis key 在一个时间窗口内累计请求次数，超过阈值返回 429。
+3. **按 IP 与按账号**：未登录接口按 IP，登录后写接口按账号 ID。
+4. **Redis fail-open**：Redis 异常时放行，避免保护层变成主业务单点故障。
+5. **MQ 预留**：`EventPublisher` 当前返回 False，表示没有 MQ，Service 自动走同步 MySQL。
+6. **降级路径**：以后接 RabbitMQ 后，如果事件发布失败，仍然可以回到当前同步写库路径。
+
+可能追问：为什么限流不用 MySQL？
+
+可以这样回答：
+
+> 限流是高频、短生命周期的计数，Redis 的内存计数和 TTL 更适合。MySQL 更适合保存长期业务事实，不适合为每个请求频繁做计数更新。
+
+可能追问：固定窗口有什么缺点？
+
+可以这样回答：
+
+> 固定窗口实现简单，但窗口边界可能有突刺。例如 12:00:59 请求 20 次，12:01:00 又请求 20 次，短时间内实际放过了 40 次。更精细可以用滑动窗口、令牌桶或漏桶。当前 MVP 选择固定窗口，是为了先掌握限流基本思想。
+
+可能追问：为什么现在不接 RabbitMQ？
+
+可以这样回答：
+
+> 当前目标是 5 天内完成能跑、能讲、能演示的 MVP。点赞、评论、关注这类写链路先用 MySQL 事务保证一致性。RabbitMQ 会带来最终一致性、重复消费、失败重试、死信队列、Worker 运维等新复杂度，所以当前只预留接口，不提前引入复杂系统。

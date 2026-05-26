@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, get_current_user
+from app.core.ratelimit import rate_limit_by_account
 from app.database import get_db
 from app.repositories.account_repo import AccountRepository
 from app.repositories.social_repo import SocialRepository
@@ -33,7 +34,11 @@ def get_social_service(db: AsyncSession = Depends(get_db)) -> SocialService:
     return SocialService(SocialRepository(db), AccountRepository(db))
 
 
-@router.post("/follow", response_model=MessageResponse)
+@router.post(
+    "/follow",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit_by_account("social_write", limit=30, window_seconds=60))],
+)
 async def follow(
     req: FollowRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -56,7 +61,11 @@ async def follow(
     return MessageResponse(message="followed")
 
 
-@router.post("/unfollow", response_model=MessageResponse)
+@router.post(
+    "/unfollow",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit_by_account("social_write", limit=30, window_seconds=60))],
+)
 async def unfollow(
     req: UnfollowRequest,
     current_user: CurrentUser = Depends(get_current_user),

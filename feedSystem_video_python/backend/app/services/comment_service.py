@@ -1,4 +1,5 @@
 from app.core.auth import CurrentUser
+from app.core.events import EventPublisher
 from app.core.redis import delete_cache_key, video_detail_cache_key
 from app.models.comment import Comment
 from app.repositories.comment_repo import CommentRepository
@@ -18,16 +19,23 @@ class VideoNotFoundError(Exception):
 
 
 class CommentService:
-    def __init__(self, comment_repo: CommentRepository, video_repo: VideoRepository):
-        """注入评论和视频 Repository，评论写入时顺便维护视频热度。"""
+    def __init__(
+        self,
+        comment_repo: CommentRepository,
+        video_repo: VideoRepository,
+        publisher: EventPublisher | None = None,
+    ):
+        """注入评论、视频 Repository 和事件发布器，预留评论异步化扩展点。"""
         self.comment_repo = comment_repo
         self.video_repo = video_repo
+        self.publisher = publisher or EventPublisher()
 
     async def publish(self, current_user: CurrentUser, video_id: int, content: str) -> Comment:
         """发布评论：校验视频存在，写入评论，并增加视频热度。"""
         content = content.strip()
         if not await self.video_repo.exists(video_id):
             raise VideoNotFoundError
+        await self.publisher.publish_comment(current_user.id, video_id, content)
         comment = await self.comment_repo.create(
             video_id=video_id,
             author_id=current_user.id,

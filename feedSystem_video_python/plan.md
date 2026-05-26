@@ -553,3 +553,393 @@ REDIS_URL=redis://127.0.0.1:6379/0
 4. SSE：实时通知。
 5. 测试：pytest 覆盖核心 happy path。
 6. 更完整的文件上传：本地存储 -> MinIO / OSS。
+
+## 13. Day 5 之后的完善方向：先不接 MQ，但补足面试深度
+
+根据 `E:\feedSystem_video\next.md` 对 Go 版本和 Python 版本的差距分析，Python 版本现在已经能完成账号、视频、点赞、评论、关注、标签、基础 Feed、Redis 缓存和限流的主链路。但是和 Go 版本相比，当前实现仍然更像“功能正确的 CRUD + 简单缓存”，还没有把 Feed 系统里最有面试价值的几个设计讲深：
+
+- Redis ZSET 时间线与冷热分离。
+- 视频详情的三级缓存、防击穿、分布式锁。
+- 热榜的滑动窗口分钟桶。
+- 事务发件箱 Outbox。
+- 通知、账号安全、视频生命周期、测试与可观测性。
+
+后续阶段仍然坚持一个原则：
+
+```text
+先不引入 RabbitMQ，不启动 Worker。
+所有写操作继续以 MySQL 同步事务保证正确性。
+Redis 仍然是性能层，失败时可以降级。
+但是每个可能异步化的动作都预留事件边界，方便以后接 MQ。
+```
+
+这样做的好处是：你可以先学会 Go 版本里最值得讲的后端设计思想，同时不被 MQ、消费者、死信队列、重复消费这些额外复杂度打断。
+
+## 14. 后续阶段安排
+
+### Day 6：Redis 基础设施升级，重点学“缓存保护”
+
+学习主题：
+
+- 缓存穿透、击穿、雪崩分别是什么。
+- 为什么热门 key 过期会把 MySQL 打爆。
+- `SET NX EX` 分布式锁的基本思想。
+- 为什么释放锁要校验随机 token，不能直接 `DEL key`。
+- 本地 L1 缓存、Redis L2 缓存、MySQL L3 数据源分别解决什么问题。
+
+完成内容：
+
+- 在 `core/redis.py` 或新增 `core/redis_lock.py` 中封装 Redis 锁：
+  - `try_acquire_lock(key, ttl)`
+  - `release_lock(key, token)`
+  - 锁 key 统一使用 `v1:lock:{业务key}`。
+- 给视频详情缓存加防击穿：
+  - 先查 Redis。
+  - miss 后尝试抢锁。
+  - 抢到锁后 double-check Redis。
+  - 再查 MySQL 并回填缓存。
+  - 没抢到锁时短暂等待并重试读缓存，仍失败再降级查 MySQL。
+- 可选增加一个很短 TTL 的本地 L1 缓存，用来学习“进程内缓存”的价值，但不作为必须项。
+- 把 Redis key 命名集中管理，减少到处手写字符串。
+
+暂不做：
+
+- 不做 RabbitMQ。
+- 不做真正的 Go `singleflight` 完整复刻。
+- 不追求压测，只做可解释、可验证的小并发场景。
+
+预留接口：
+
+```python
+class CacheProtector:
+    async def get_or_build(self, key: str, ttl: int, builder: Callable):
+        ...
+```
+
+以后 Feed、关注流、热榜都可以复用这个“查缓存 -> 抢锁 -> 回源 -> 回填”的模式。
+
+面试能讲：
+
+> 我的视频详情不是简单 Cache-Aside，而是补了缓存击穿保护。热门视频缓存过期时，不让所有请求同时回源 MySQL，而是用 Redis `SET NX EX` 让一个请求构建缓存，其余请求短暂等待后读缓存。释放锁时用随机 token + Lua 脚本，避免误删别人的锁。
+
+### Day 7：Feed 最新流升级，重点学“冷热分离 + ZSET 时间线”
+
+学习主题：
+
+- Redis ZSET 为什么适合做时间线。
+- `score=create_time`、`member=video_id` 是什么含义。
+- 热数据和冷数据为什么要分开。
+- 为什么冷数据不要写回热 ZSET。
+- 游标分页如何和 ZSET 的 score 查询结合。
+
+完成内容：
+
+- 新增全局时间线 Redis key：
+  - `v1:feed:global_timeline`
+  - member：`video_id`
+  - score：视频发布时间戳。
+- 发布视频成功后，在同步 MySQL 提交之后，直接尝试写入 ZSET。
+  - Redis 写失败不影响发布成功。
+  - 失败时最多记录日志，后续可通过重建时间线修复。
+- `listLatest` 从“短 TTL 缓存”升级为“热路径 + 冷路径”：
+  - 如果 ZSET 不存在或太少，用 Redis 锁保护一次重建。
+  - 游标在 ZSET 水位线以内，走 Redis 热路径取 ID。
+  - 热路径 ID 不够一页时，用 MySQL 冷路径补齐。
+  - 游标已经很老时，直接走 MySQL 冷路径。
+- Feed 组装视频详情时，可以先复用 Day 6 的缓存保护能力。
+
+暂不做：
+
+- 不接 timeline MQ。
+- 不做独立 Worker 重建。
+- 不做复杂的异步回填，只在 API 进程里同步尝试维护 ZSET。
+
+预留接口：
+
+```python
+class TimelineWriter:
+    async def add_video(self, video_id: int, create_time: datetime) -> None:
+        ...
+
+class EventPublisher:
+    async def publish_video_created(self, video_id: int) -> bool:
+        return False
+```
+
+现在发布视频后直接调用 `TimelineWriter.add_video`。以后接 MQ 时，可以把这个动作挪到 `video.created` 消费者里，API 层只负责发事件。
+
+面试能讲：
+
+> 最新 Feed 没有一直打 MySQL。我用 Redis ZSET 保存最近一批视频 ID，发布时间作为 score。新的请求优先走 Redis 热路径，老游标走 MySQL 冷路径。这样既让首页最新流很快，又避免把历史冷数据不断塞进 Redis，造成缓存污染。
+
+### Day 8：热榜与 popularity，重点学“滑动窗口热度”
+
+学习主题：
+
+- 点赞数榜和热度榜有什么区别。
+- 为什么热榜不能只看 MySQL `popularity` 总值。
+- 为什么 Go 版本用“分钟桶”而不是一个大 ZSET。
+- `ZINCRBY`、`ZUNIONSTORE`、快照分页分别解决什么问题。
+
+完成内容：
+
+- 先补一个 DB fallback 版热度榜接口：
+  - `POST /feed/listByPopularity`
+  - 排序：`popularity DESC, create_time DESC, id DESC`
+  - 游标：`popularity + create_time + id`。
+- 点赞、取消点赞、评论发布、评论删除继续同步更新 MySQL `popularity`。
+- 再补 Redis 简化版热度写入：
+  - 当前分钟桶：`v1:hot:video:1m:{yyyyMMddHHmm}`
+  - 点赞 `+1`，取消点赞 `-1`，评论 `+1` 或自定义权重。
+  - 每个分钟桶设置 2 小时 TTL。
+- 可选实现“最近 60 分钟热榜快照”：
+  - 把多个分钟桶合并到 `v1:hot:video:snapshot:{minute}`。
+  - 查询热榜优先读快照，Redis 不可用回退 DB fallback。
+
+暂不做：
+
+- 不做 PopularityWorker。
+- 不通过 MQ 更新热榜。
+- 不追求复杂推荐算法，只学热度存储和分页稳定性。
+
+预留接口：
+
+```python
+class PopularityWriter:
+    async def increase(self, video_id: int, delta: int, reason: str) -> None:
+        ...
+
+class EventPublisher:
+    async def publish_popularity_changed(self, video_id: int, delta: int, reason: str) -> bool:
+        return False
+```
+
+现在 Service 直接调用 `PopularityWriter`。以后接 MQ 时，API 只发 `popularity.changed`，由 Worker 消费后写 Redis 热榜。
+
+面试能讲：
+
+> 点赞榜是累计值，适合用 MySQL 字段排序；热榜更关注最近一段时间的增量，所以我用 Redis ZSET 按分钟分桶写入热度。这样可以降低单个热榜 key 的写竞争，也能用最近 N 个分钟桶合并出滑动窗口榜单。
+
+### Day 9：账号与视频生命周期，重点学“业务完整性”
+
+学习主题：
+
+- 为什么真实项目不只有注册登录。
+- 改名、改密码为什么会影响 token。
+- 删除视频时怎么处理点赞、评论、标签关系。
+- 文件上传为什么要校验类型、大小和路径安全。
+
+完成内容：
+
+- 账号模块补充：
+  - `POST /account/rename`
+  - `POST /account/changePassword`
+  - `POST /account/updateProfile`
+  - 可选 `POST /account/updateAvatarUrl`，先不做真实文件上传。
+- Token 策略：
+  - 改名后重新签发 access token。
+  - 改密码后清空 MySQL token、refresh token，并删除 Redis token，让旧登录态失效。
+- 视频模块补充：
+  - `POST /video/update`
+  - `POST /video/delete`
+  - 只有作者能改自己的视频。
+  - 删除视频后同步删除或标记相关评论、点赞、标签关系。
+  - 删除或更新后失效视频详情、Feed、作者列表相关缓存。
+- 文件上传作为可选小阶段：
+  - 本地保存封面和视频文件。
+  - 限制大小。
+  - 校验扩展名和 MIME。
+  - 返回可访问的静态资源 URL。
+
+暂不做：
+
+- 不做对象存储。
+- 不做视频转码。
+- 不做复杂审核系统。
+
+预留接口：
+
+```python
+class EventPublisher:
+    async def publish_video_deleted(self, video_id: int) -> bool:
+        return False
+```
+
+以后接 MQ 时，删除视频可以异步通知 timeline、hot ranking、notification 等模块清理派生数据。
+
+面试能讲：
+
+> 改密码不只是更新密码哈希，还要让旧 token 失效；删除视频不只是删 `videos` 一行，还要考虑点赞、评论、标签、Feed 缓存和热榜里的派生数据。这类功能体现的是业务一致性，而不是单表 CRUD。
+
+### Day 10：通知系统，不接 MQ 也能学“事件副作用”
+
+学习主题：
+
+- 点赞、评论、关注为什么会产生通知。
+- 通知是业务主流程还是副作用。
+- 不接 MQ 时如何先同步创建通知。
+- 以后接 MQ 时如何把通知创建挪到 Worker。
+
+完成内容：
+
+- 新增 `notifications` 表：
+  - `id`
+  - `receiver_id`
+  - `sender_id`
+  - `type`
+  - `video_id`
+  - `comment_id`
+  - `content`
+  - `is_read`
+  - `created_at`
+- 点赞、评论、关注成功后同步创建通知。
+- 评论内容中提取 `@username`，给被提及用户创建 mention 通知。
+- 新增接口：
+  - `POST /notification/list`
+  - `POST /notification/unreadCount`
+  - `POST /notification/markRead`
+- 前端右侧日志栏可以继续保留，同时主页面加一个简单通知入口。
+
+暂不做：
+
+- 不做 SSE 实时推送。
+- 不做 RabbitMQ 通知消费者。
+- 不做复杂去重聚合，例如“10 个人赞了你的视频”。
+
+预留接口：
+
+```python
+class NotificationService:
+    async def create_like_notification(...):
+        ...
+
+class EventPublisher:
+    async def publish_notification_created(self, notification_id: int) -> bool:
+        return False
+```
+
+以后接 MQ 时，点赞/评论/关注 Service 可以只发布事件，Notification Worker 负责生成通知；SSE Worker 再负责推送。
+
+面试能讲：
+
+> 我把通知看成主业务成功后的副作用。当前不接 MQ，所以先同步创建通知，保证用户能查到；但代码上保留事件边界，后续可以把通知创建和 SSE 推送迁到异步 Worker，避免主接口被通知逻辑拖慢。
+
+### Day 11：测试、迁移与可观测性，重点学“工程可信度”
+
+学习主题：
+
+- 为什么项目能跑不等于项目可靠。
+- 单元测试、接口测试、集成测试分别测什么。
+- Alembic 迁移为什么比 `create_all()` 更适合长期项目。
+- request id、结构化日志、错误响应统一有什么价值。
+
+完成内容：
+
+- 添加 pytest 测试：
+  - 纯函数：标签提取、JWT 解析、Redis key 生成。
+  - Service happy path：注册、登录、发布视频、点赞、评论。
+  - 关键异常：重复点赞、未登录发布、越权删除。
+- 增加一个简单的接口测试脚本或 Postman/HTTP 示例。
+- 可选引入 Alembic：
+  - 将当前表结构生成初始迁移。
+  - 后续新增通知、outbox 等表都走迁移。
+- 日志增强：
+  - 每个请求生成 request id。
+  - 关键写操作记录结构化日志。
+  - 前端接口日志只作为调试视图，后端日志作为排障依据。
+
+暂不做：
+
+- 不追求完整覆盖率。
+- 不引入复杂 APM。
+
+面试能讲：
+
+> 我不只验证接口能手动点通，还给关键业务补了测试。比如重复点赞依赖数据库唯一约束兜底，越权删除依赖 Service 层校验，这些都适合写测试固定下来。后续表结构变化也应该从 `create_all()` 过渡到 Alembic 迁移，避免线上环境不可控。
+
+## 15. Outbox 作为 MQ 前的过渡能力
+
+RabbitMQ 暂时不做，但可以先学习事务发件箱，因为它不要求真的接消息队列，却能解释“数据库写入”和“后续副作用”如何保持最终一致。
+
+建议在 Day 8 或 Day 10 之后加入一个轻量 Outbox：
+
+```text
+outbox_msgs
+  id
+  event_type
+  payload_json
+  status        pending / processed / failed
+  retry_count
+  created_at
+  updated_at
+```
+
+同步写业务数据时，在同一个 MySQL 事务里插入 outbox 事件：
+
+```text
+BEGIN
+  INSERT videos ...
+  INSERT outbox_msgs(event_type="video.created", payload={video_id})
+COMMIT
+```
+
+当前不启动 Worker，可以先做两个简单能力：
+
+1. 提供一个开发用接口或脚本查看 pending outbox。
+2. 在 Service 成功后继续同步调用当前本地 writer，例如 `TimelineWriter`、`PopularityWriter`、`NotificationService`。
+
+以后接 RabbitMQ 时：
+
+```text
+OutboxPoller 读取 pending outbox
+  -> 发布到 RabbitMQ
+  -> 成功后标记 processed
+  -> 失败后 retry_count + 1
+```
+
+面试能讲：
+
+> 如果直接“先写 DB，再发 MQ”，DB 成功但 MQ 失败时就会丢事件；如果“先发 MQ，再写 DB”，消费者可能看到还没提交的数据。Outbox 的核心是把业务数据和事件记录放在同一个事务里，至少保证事件不会丢。当前我还没接 RabbitMQ，但先把 outbox 表和事件边界留好，后续加 MQ 时就有可靠的发布来源。
+
+## 16. 后续优先级建议
+
+最推荐先做：
+
+1. Day 6：视频详情缓存防击穿 + Redis 锁。
+2. Day 7：最新 Feed ZSET 时间线 + 冷热分离。
+3. Day 8：`/feed/listByPopularity` DB fallback + Redis 分钟桶。
+4. Day 11：pytest 覆盖核心 happy path。
+
+原因是这四个最能把项目从“能跑的业务系统”提升到“能讲后端设计取舍的项目”。
+
+可以稍后做：
+
+1. Day 9：账号改密、改名、视频更新删除。
+2. Day 10：通知系统和 `@mention`。
+3. 文件上传。
+4. Alembic 迁移。
+
+暂时继续不做：
+
+1. RabbitMQ 真接入。
+2. Worker 独立进程。
+3. 死信队列和重试拓扑。
+4. SSE 实时推送。
+
+## 17. 新阶段的学习纪律
+
+从 Day 6 开始，每个阶段都要继续保留三类产物：
+
+1. 代码实现：功能必须能跑通。
+2. `learning/dayX_notes.md`：写清楚函数链路、数据流、输入输出、缓存/DB/MQ 预留点。
+3. `learning/dayX_practice.py`：只挑最关键的 2-3 段让你对照敲，不为了敲代码而敲代码。
+
+每阶段结束时必须补充面试素材：
+
+```text
+这个阶段解决了什么真实后端问题？
+为什么 Go 版本要这么设计？
+Python 版本这次实现了哪一层？
+暂时没做 MQ 时如何保证正确性？
+以后接 MQ 时要替换哪个接口？
+```

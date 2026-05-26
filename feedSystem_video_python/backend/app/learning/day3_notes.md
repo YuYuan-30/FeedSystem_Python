@@ -142,6 +142,21 @@ likes_count = GREATEST(likes_count - 1, 0)
 4. `CommentRepository.list_by_video_id`
 5. 返回 `list[CommentPublic]`
 
+输入和输出补充：
+
+- `POST /comment/publish` 的输入来自请求体：`video_id` 和 `content`；当前用户来自 `get_current_user` 解析出的 JWT。
+- 发布评论会写入 MySQL 的 `comments` 表，并更新 `videos.popularity`。
+- Day 4 接入视频详情缓存后，评论发布和删除还会调用 `delete_cache_key(video_detail_cache_key(video_id))`，让下一次详情查询回源 MySQL 后重新缓存。
+- `POST /comment/delete` 的输入是 `comment_id`；只有评论作者本人能删除。
+- `POST /comment/listAll` 的输入是 `video_id`；输出是这个视频下的评论列表，评论数据来自 MySQL。
+
+框架和数据库知识点：
+
+- 评论发布、删除都依赖 FastAPI `Depends(get_current_user)` 做硬鉴权。
+- `comments.video_id` 和 `comments.author_id` 分别关联视频和用户。
+- 评论发布后更新 `videos.popularity`，是为了让热度榜后续可以复用同一个排序字段。
+- 删除评论时先查评论，再校验作者，这是典型的“先定位资源，再判断权限”。
+
 ## 7. Feed 最新流
 
 最新 Feed 的请求体：

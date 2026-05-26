@@ -1,6 +1,7 @@
 from sqlalchemy.exc import IntegrityError
 
 from app.core.auth import CurrentUser
+from app.core.events import EventPublisher
 from app.models.account import Account
 from app.repositories.account_repo import AccountRepository
 from app.repositories.social_repo import SocialRepository
@@ -23,10 +24,16 @@ class NotFollowedError(Exception):
 
 
 class SocialService:
-    def __init__(self, social_repo: SocialRepository, account_repo: AccountRepository):
-        """注入关注关系仓储和账号仓储，让业务层同时校验账号与关系规则。"""
+    def __init__(
+        self,
+        social_repo: SocialRepository,
+        account_repo: AccountRepository,
+        publisher: EventPublisher | None = None,
+    ):
+        """注入关注、账号仓储和事件发布器，让关注链路以后可接 MQ。"""
         self.social_repo = social_repo
         self.account_repo = account_repo
+        self.publisher = publisher or EventPublisher()
 
     async def follow(self, current_user: CurrentUser, vlogger_id: int) -> None:
         """关注作者：不能关注自己，作者必须存在，同一关系不能重复创建。"""
@@ -36,6 +43,10 @@ class SocialService:
             raise AccountNotFoundError
         if await self.social_repo.is_followed(current_user.id, vlogger_id):
             raise AlreadyFollowedError
+        published = await self.publisher.publish_follow(current_user.id, vlogger_id)
+        if published:
+            return
+
         try:
             await self.social_repo.follow(current_user.id, vlogger_id)
         except IntegrityError as exc:
@@ -45,6 +56,10 @@ class SocialService:
         """取消关注：作者必须存在，且当前用户已经关注过该作者。"""
         if await self.account_repo.find_by_id(vlogger_id) is None:
             raise AccountNotFoundError
+        published = await self.publisher.publish_unfollow(current_user.id, vlogger_id)
+        if published:
+            return
+
         deleted = await self.social_repo.unfollow(current_user.id, vlogger_id)
         if not deleted:
             raise NotFollowedError

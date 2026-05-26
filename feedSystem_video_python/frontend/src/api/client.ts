@@ -5,6 +5,17 @@ const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api'
 
 let refreshingPromise: Promise<string | null> | null = null
 
+type RequestLogDetail = {
+  method: string
+  path: string
+  status: number
+  ok: boolean
+  durationMs: number
+  requestBody?: unknown
+  responseBody: unknown
+  note?: string
+}
+
 export class ApiError extends Error {
   status: number
   payload: unknown
@@ -29,6 +40,48 @@ async function readBody(res: Response): Promise<unknown> {
   }
 }
 
+function emitRequestLog(detail: RequestLogDetail): void {
+  /** 向页面抛出一次真实 HTTP 请求日志，App.vue 统一接收后展示在右侧日志栏。 */
+  window.dispatchEvent(new CustomEvent<RequestLogDetail>('api-request-log', { detail }))
+}
+
+async function loggedFetch(
+  path: string,
+  init: RequestInit,
+  requestBody?: unknown,
+  note?: string,
+): Promise<{ res: Response; data: unknown }> {
+  /** 包装 fetch，确保每一次真实 HTTP 请求都会产生一条接口日志。 */
+  const startedAt = performance.now()
+  try {
+    const res = await fetch(`${API_BASE}${path}`, init)
+    const data = await readBody(res)
+    emitRequestLog({
+      method: init.method ?? 'GET',
+      path,
+      status: res.status,
+      ok: res.ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      requestBody,
+      responseBody: data,
+      note,
+    })
+    return { res, data }
+  } catch (error) {
+    emitRequestLog({
+      method: init.method ?? 'GET',
+      path,
+      status: 0,
+      ok: false,
+      durationMs: Math.round(performance.now() - startedAt),
+      requestBody,
+      responseBody: error instanceof Error ? { message: error.message } : error,
+      note,
+    })
+    throw error
+  }
+}
+
 function getErrorMessage(data: unknown, status: number): string {
   /** 从 FastAPI 的 detail 字段或通用 error 字段里提取错误信息。 */
   if (data && typeof data === 'object') {
@@ -39,9 +92,8 @@ function getErrorMessage(data: unknown, status: number): string {
   return `请求失败：${status}`
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
+async function handleResponse<T>(res: Response, data?: unknown): Promise<T> {
   /** 统一处理 fetch 响应，非 2xx 时抛出 ApiError。 */
-  const data = await readBody(res)
   if (!res.ok) {
     if (res.status === 401) clearAuthState()
     throw new ApiError(getErrorMessage(data, res.status), res.status, data)
@@ -57,18 +109,19 @@ async function refreshAccessToken(): Promise<string | null> {
 
   refreshingPromise = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/account/refresh`, {
+      const body = { refresh_token: auth.refreshToken }
+      const { res, data } = await loggedFetch('/account/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: auth.refreshToken }),
-      })
+        body: JSON.stringify(body),
+      }, body, '自动续签')
       if (!res.ok) {
         clearAuthState()
         return null
       }
-      const data = await handleResponse<LoginResponse>(res)
-      saveAccessToken(data.token)
-      return data.token
+      const login = await handleResponse<LoginResponse>(res, data)
+      saveAccessToken(login.token)
+      return login.token
     } catch {
       clearAuthState()
       return null
@@ -82,8 +135,8 @@ async function refreshAccessToken(): Promise<string | null> {
 
 export async function getJson<T>(path: string): Promise<T> {
   /** 发送 GET 请求，当前主要用于健康检查。 */
-  const res = await fetch(`${API_BASE}${path}`)
-  return handleResponse<T>(res)
+  const { res, data } = await loggedFetch(path, { method: 'GET' })
+  return handleResponse<T>(res, data)
 }
 
 export async function postJson<T>(
@@ -100,24 +153,24 @@ export async function postJson<T>(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const { res, data } = await loggedFetch(path, {
     method: 'POST',
     headers,
     body: JSON.stringify(body ?? {}),
-  })
+  }, body)
 
   if (res.status === 401 && path !== '/account/refresh' && auth.refreshToken) {
     const newToken = await refreshAccessToken()
     if (newToken) {
       headers.Authorization = `Bearer ${newToken}`
-      const retryRes = await fetch(`${API_BASE}${path}`, {
+      const retry = await loggedFetch(path, {
         method: 'POST',
         headers,
         body: JSON.stringify(body ?? {}),
-      })
-      return handleResponse<T>(retryRes)
+      }, body, '续签后重试')
+      return handleResponse<T>(retry.res, retry.data)
     }
   }
 
-  return handleResponse<T>(res)
+  return handleResponse<T>(res, data)
 }

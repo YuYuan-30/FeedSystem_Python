@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, get_current_user
+from app.core.ratelimit import rate_limit_by_account
 from app.database import get_db
 from app.repositories.like_repo import LikeRepository
 from app.repositories.video_repo import VideoRepository
@@ -23,7 +24,11 @@ def get_like_service(db: AsyncSession = Depends(get_db)) -> LikeService:
     return LikeService(LikeRepository(db), VideoRepository(db))
 
 
-@router.post("/like", response_model=MessageResponse)
+@router.post(
+    "/like",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit_by_account("like_write", limit=60, window_seconds=60))],
+)
 async def like_video(
     req: LikeRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -43,7 +48,11 @@ async def like_video(
     return MessageResponse(message="video liked")
 
 
-@router.post("/unlike", response_model=MessageResponse)
+@router.post(
+    "/unlike",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit_by_account("like_write", limit=60, window_seconds=60))],
+)
 async def unlike_video(
     req: LikeRequest,
     current_user: CurrentUser = Depends(get_current_user),

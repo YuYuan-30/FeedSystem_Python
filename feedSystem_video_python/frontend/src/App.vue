@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import { clearAuthState, readAuthState, saveLoginResponse } from './api/auth'
 import { ApiError, getJson } from './api/client'
@@ -12,10 +12,22 @@ import type { Account, Comment, FeedVideoItem, Video } from './api/types'
 import { getDetail, publishVideo } from './api/video'
 
 type LogItem = {
+  id: number
   time: string
   title: string
   payload: unknown
   ok: boolean
+}
+
+type RequestLogDetail = {
+  method: string
+  path: string
+  status: number
+  ok: boolean
+  durationMs: number
+  requestBody?: unknown
+  responseBody: unknown
+  note?: string
 }
 
 type DisplayVideo = {
@@ -46,6 +58,7 @@ const nextTagTime = ref(0)
 const nextLikesCount = ref<number | null>(null)
 const nextLikesId = ref<number | null>(null)
 const hasMore = ref(false)
+let logSeq = 0
 
 const registerForm = reactive({ username: '', password: '' })
 const loginForm = reactive({ username: '', password: '' })
@@ -70,12 +83,28 @@ function syncAuth(): void {
 function addLog(title: string, payload: unknown, ok = true): void {
   /** 记录一次接口调用结果，右侧日志栏会展示最近的请求。 */
   logs.value.unshift({
+    id: ++logSeq,
     time: new Date().toLocaleTimeString(),
     title,
     payload,
     ok,
   })
-  logs.value = logs.value.slice(0, 12)
+  logs.value = logs.value.slice(0, 40)
+}
+
+function onApiRequestLog(event: Event): void {
+  /** 接收 API client 发出的真实 HTTP 请求日志，让右侧日志和后端终端请求更一致。 */
+  const detail = (event as CustomEvent<RequestLogDetail>).detail
+  const suffix = detail.note ? ` · ${detail.note}` : ''
+  addLog(
+    `${detail.method} ${detail.path} ${detail.status}${suffix}`,
+    {
+      duration_ms: detail.durationMs,
+      request: detail.requestBody ?? null,
+      response: detail.responseBody,
+    },
+    detail.ok,
+  )
 }
 
 function getErrorPayload(error: unknown): unknown {
@@ -88,13 +117,14 @@ function getErrorPayload(error: unknown): unknown {
 }
 
 async function runAction<T>(title: string, action: () => Promise<T>): Promise<T | null> {
-  /** 统一包装接口调用，成功和失败都会进入右侧日志栏。 */
+  /** 统一包装业务动作；真实 HTTP 请求由 API client 逐条写入右侧日志。 */
   try {
     const result = await action()
-    addLog(title, result, true)
     return result
   } catch (error) {
-    addLog(`${title} 失败`, getErrorPayload(error), false)
+    if (!(error instanceof ApiError)) {
+      addLog(`${title} 失败`, getErrorPayload(error), false)
+    }
     return null
   } finally {
     syncAuth()
@@ -381,10 +411,16 @@ async function onPublishComment(): Promise<void> {
 
 onMounted(async () => {
   /** 页面加载后同步登录态，检查后端，并加载最新 Feed。 */
+  window.addEventListener('api-request-log', onApiRequestLog)
   syncAuth()
   if (auth.accountId) searchForm.accountId = auth.accountId
   await checkHealth()
   await loadLatest(true)
+})
+
+onBeforeUnmount(() => {
+  /** 页面卸载时移除接口日志监听，避免热更新后重复记录。 */
+  window.removeEventListener('api-request-log', onApiRequestLog)
 })
 </script>
 
@@ -569,7 +605,7 @@ onMounted(async () => {
         <button type="button" @click="onFindAccount">查用户</button>
       </div>
       <div class="log-list">
-        <article v-for="log in logs" :key="`${log.time}-${log.title}`" :class="{ error: !log.ok }">
+        <article v-for="log in logs" :key="log.id" :class="{ error: !log.ok }">
           <header>
             <strong>{{ log.title }}</strong>
             <time>{{ log.time }}</time>

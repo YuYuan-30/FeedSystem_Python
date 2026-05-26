@@ -1,8 +1,7 @@
 from app.core.auth import CurrentUser
+from app.core.cache_protector import get_json_with_cache_protection
 from app.core.redis import (
     delete_cache_prefix,
-    get_json_cache,
-    set_json_cache,
     video_detail_cache_key,
 )
 from app.core.tags import extract_tags
@@ -50,15 +49,20 @@ class VideoService:
         return await self.repo.list_by_author_id(author_id)
 
     async def get_detail(self, video_id: int) -> VideoPublic:
-        """查询视频详情：先读 Redis，缓存未命中再查 MySQL 并回填缓存。"""
+        """查询视频详情：用缓存保护工具避免热门详情缓存失效时大量请求同时打到 MySQL。"""
         cache_key = video_detail_cache_key(video_id)
-        cached = await get_json_cache(cache_key)
-        if cached is not None:
-            return VideoPublic.model_validate(cached)
 
-        video = await self.repo.get_by_id(video_id)
-        if video is None:
-            raise VideoNotFoundError
-        public = VideoPublic.model_validate(video)
-        await set_json_cache(cache_key, public.model_dump(mode="json"), ttl_seconds=300)
-        return public
+        async def build_detail() -> dict:
+            """缓存未命中时回源 MySQL，并把 ORM 对象转换成可 JSON 缓存的字典。"""
+            video = await self.repo.get_by_id(video_id)
+            if video is None:
+                raise VideoNotFoundError
+            public = VideoPublic.model_validate(video)
+            return public.model_dump(mode="json")
+
+        cached_or_built = await get_json_with_cache_protection(
+            cache_key=cache_key,
+            ttl_seconds=300,
+            builder=build_detail,
+        )
+        return VideoPublic.model_validate(cached_or_built)

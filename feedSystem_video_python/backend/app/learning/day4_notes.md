@@ -94,6 +94,68 @@ uq_socials_follower_vlogger
 - 返回 `video_list`、`next_time` 和 `has_more`。
 - `next_time` 给前端作为下一页游标。
 
+## 4.5 粉丝列表、关注列表和计数的数据流
+
+粉丝列表输入来源：
+
+- 前端或 Swagger 调用 `POST /social/getAllFollowers`。
+- 请求体可以传 `vlogger_id`。
+- 如果不传，默认查询当前登录用户的粉丝。
+
+函数链路：
+
+1. `api/social.py::get_all_followers`
+   - `get_current_user` 解析 JWT，拿到当前用户。
+2. `SocialService.get_all_followers`
+   - 确定目标用户 ID。
+   - 调用 `AccountRepository.find_by_id` 校验目标用户存在。
+   - 调用 `SocialRepository.list_followers` 查询粉丝账号列表。
+   - 调用 `SocialRepository.count_followers` 查询粉丝数。
+3. API 层把账号 ORM 对象转换为 `AccountPublic`。
+
+输出去向：
+
+- 返回 `followers` 和 `follower_count`。
+- 数据来自 MySQL 的 `socials` 表和 `accounts` 表。
+- 响应不会返回密码哈希、token、refresh token 等敏感字段。
+
+关注列表输入来源：
+
+- 前端或 Swagger 调用 `POST /social/getAllVloggers`。
+- 请求体可以传 `follower_id`。
+- 如果不传，默认查询当前登录用户关注了谁。
+
+函数链路：
+
+1. `api/social.py::get_all_vloggers`
+2. `SocialService.get_all_vloggers`
+3. `AccountRepository.find_by_id`
+4. `SocialRepository.list_vloggers`
+5. `SocialRepository.count_vloggers`
+
+输出去向：
+
+- 返回 `vloggers` 和 `vlogger_count`。
+- 数据来自 MySQL。
+
+关注计数输入来源：
+
+- 前端调用 `POST /social/getCounts`。
+- 当前用户来自 JWT。
+
+函数链路：
+
+1. `api/social.py::get_counts`
+2. `SocialService.get_counts`
+3. `SocialRepository.count_followers(current_user.id)`
+4. `SocialRepository.count_vloggers(current_user.id)`
+
+框架和数据库知识点：
+
+- 这些接口都使用 FastAPI `Depends(get_current_user)`，因为它们是登录后用户关系数据。
+- `socials(follower_id, vlogger_id)` 是关系表，保存“谁关注了谁”。
+- 查询粉丝和关注列表本质上是通过关系表找到账号 ID，再回到 `accounts` 表取公开资料。
+
 ## 5. 为什么标签要拆成 tags 和 video_tags
 
 一个视频可以有多个标签，一个标签也可以对应多个视频。

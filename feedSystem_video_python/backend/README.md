@@ -18,6 +18,9 @@
 - 实现关注、取关、粉丝列表、关注列表。
 - 实现关注流和标签流。
 - 通过 Redis 缓存视频详情和最新 Feed 短缓存。
+- 通过 Redis 固定窗口限流保护注册、登录、点赞、评论和关注写接口。
+- 视频详情缓存已升级为带 Redis 锁的防击穿链路。
+- 预留 `EventPublisher` 事件发布接口，后续可接 RabbitMQ。
 
 如果你还没有 MySQL 和 Redis 容器，可以在项目根目录用 compose 启动依赖：
 
@@ -103,4 +106,20 @@ Day 4 推荐继续验证：
 7. 连续两次调用 `POST /video/getDetail`，第二次会优先命中 Redis 详情缓存。
 8. 调用 `POST /feed/listLatest` 后，Redis 中会短暂出现 `v1:feed:latest:*` 缓存 key，默认 TTL 为 5 秒。
 
-前端当前已接入 Day1-4 的主要联调入口：账号、视频、点赞、评论、推荐 Feed、点赞榜、关注流、标签流和右侧接口日志。
+Day 5 推荐继续验证：
+
+1. 高频调用 `POST /account/login`，超过 1 分钟 20 次会返回 429。
+2. 登录后高频调用点赞、评论或关注写接口，超过限制会返回 429。
+3. 在 Redis 中可以看到类似 `v1:ratelimit:account_login:127.0.0.1` 的限流 key。
+4. 暂停 Redis 后，核心业务仍会继续走 MySQL；当前限流策略会放行请求。
+5. 阅读 `app/core/events.py`，确认当前 RabbitMQ 只预留扩展点，不做真实接入。
+
+前端当前已接入 Day1-4 的主要联调入口：账号、视频、点赞、评论、推荐 Feed、点赞榜、关注流、标签流和右侧接口日志。Day5 的 429 响应会进入右侧接口日志，便于观察限流结果。
+
+Day 6 推荐继续验证：
+
+1. 调用 `POST /video/getDetail` 查询一个存在的视频，第一次会在 Redis 写入 `v1:video:detail:{id}`。
+2. 再次调用同一个视频详情，应优先从 Redis 读取缓存。
+3. 删除 Redis 中的视频详情 key 后再次请求，会触发缓存保护链路：先尝试写入 `v1:lock:v1:video:detail:{id}`，再回源 MySQL 并回填缓存。
+4. 正常请求结束后，锁 key 会被 Lua 脚本释放，不应该长期存在。
+5. 如果 Redis 不可用，视频详情仍会回源 MySQL；只是失去缓存加速和防击穿保护。

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, get_current_user
+from app.core.ratelimit import rate_limit_by_ip
 from app.database import get_db
 from app.repositories.account_repo import AccountRepository
 from app.schemas.account import (
@@ -29,7 +30,11 @@ def get_account_service(db: AsyncSession = Depends(get_db)) -> AccountService:
     return AccountService(AccountRepository(db))
 
 
-@router.post("/register", response_model=MessageResponse)
+@router.post(
+    "/register",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit_by_ip("account_register", limit=10, window_seconds=60))],
+)
 async def register(
     req: RegisterRequest,
     db: AsyncSession = Depends(get_db),
@@ -48,7 +53,11 @@ async def register(
     return MessageResponse(message="account created")
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    dependencies=[Depends(rate_limit_by_ip("account_login", limit=20, window_seconds=60))],
+)
 async def login(
     req: LoginRequest,
     db: AsyncSession = Depends(get_db),

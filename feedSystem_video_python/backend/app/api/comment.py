@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, get_current_user
+from app.core.ratelimit import rate_limit_by_account
 from app.database import get_db
 from app.repositories.comment_repo import CommentRepository
 from app.repositories.video_repo import VideoRepository
@@ -28,7 +29,11 @@ def get_comment_service(db: AsyncSession = Depends(get_db)) -> CommentService:
     return CommentService(CommentRepository(db), VideoRepository(db))
 
 
-@router.post("/publish", response_model=CommentPublic)
+@router.post(
+    "/publish",
+    response_model=CommentPublic,
+    dependencies=[Depends(rate_limit_by_account("comment_write", limit=30, window_seconds=60))],
+)
 async def publish_comment(
     req: PublishCommentRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -45,7 +50,11 @@ async def publish_comment(
     return CommentPublic.model_validate(comment)
 
 
-@router.post("/delete", response_model=MessageResponse)
+@router.post(
+    "/delete",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit_by_account("comment_write", limit=30, window_seconds=60))],
+)
 async def delete_comment(
     req: DeleteCommentRequest,
     current_user: CurrentUser = Depends(get_current_user),
